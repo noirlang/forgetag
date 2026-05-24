@@ -1,0 +1,14 @@
+{
+  "name": "forgetag",
+  "version": "0.1.0",
+  "private": true,
+  "author": "noirLang",
+  "workspaces": [
+    "apps/desktop"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @forgetag/desktop run dev",
+    "build": "npm --workspace @forgetag/desktop run build",
+    "desktop": "GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri dev --config src-tauri/tauri.conf.json"
+  }
+}

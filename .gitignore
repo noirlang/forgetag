@@ -1,0 +1,15 @@
+target/
+node_modules/
+dist/
+.vite/
+.DS_Store
+*.log
+*.tmp
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+.forgetag/cache/
+src-tauri/gen/

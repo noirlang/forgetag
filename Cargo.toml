@@ -1,0 +1,40 @@
+[workspace]
+members = [
+  "crates/forgetag-core",
+  "crates/forgetag-db",
+  "crates/forgetag-indexer",
+  "crates/forgetag-search",
+  "crates/forgetag-code",
+  "crates/forgetag-ai",
+  "crates/forgetag-plugin",
+  "crates/forgetag-ipc",
+  "src-tauri",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/noirlang/forgetag"
+homepage = "https://github.com/noirlang/forgetag"
+authors = ["noirLang"]
+
+[workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+specta = { version = "2.0.0-rc.22", features = ["derive"] }
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["serde", "v7"] }
+
+forgetag-core = { path = "crates/forgetag-core" }
+forgetag-db = { path = "crates/forgetag-db" }
+forgetag-indexer = { path = "crates/forgetag-indexer" }
+forgetag-search = { path = "crates/forgetag-search" }
+forgetag-code = { path = "crates/forgetag-code" }
+forgetag-ai = { path = "crates/forgetag-ai" }
+forgetag-plugin = { path = "crates/forgetag-plugin" }
+forgetag-ipc = { path = "crates/forgetag-ipc" }
