@@ -145,6 +145,16 @@ fn list_items() -> Result<Vec<ImportResponse>, String> {
 fn export_library(destination: String) -> Result<LibraryTransferResponse, String> {
     let destination = ensure_zip_extension(PathBuf::from(destination));
     let library_root = library_root()?;
+
+    if is_inside_directory(&destination, &library_root) {
+        return Err("Choose an export location outside the forgetag library.".to_string());
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("Failed to create export folder: {err}"))?;
+    }
+
     let file = File::create(&destination)
         .map_err(|err| format!("Failed to create export archive: {err}"))?;
     let mut zip = ZipWriter::new(file);
@@ -347,7 +357,7 @@ fn library_root() -> Result<PathBuf, String> {
 fn library_roots_for_read() -> Result<Vec<PathBuf>, String> {
     let home = home_dir()?;
     let primary = library_root()?;
-    let legacy = home.join(["Forge", "Tag Library"].concat());
+    let legacy = home.join("Forge").join("Tag Library");
 
     if legacy.exists() && legacy != primary {
         Ok(vec![primary, legacy])
@@ -398,8 +408,23 @@ fn add_path_to_zip<W: Write + Seek>(
     options: SimpleFileOptions,
 ) -> Result<(), String> {
     let name = zip_entry_name(root, path)?;
+    let file_type = fs::symlink_metadata(path)
+        .map_err(|err| format!("Failed to read export file metadata: {err}"))?
+        .file_type();
 
-    if path.is_dir() {
+    if file_type.is_symlink() {
+        let Ok(metadata) = fs::metadata(path) else {
+            return Ok(());
+        };
+
+        if metadata.is_file() {
+            return add_file_to_zip(zip, path, &name, options);
+        }
+
+        return Ok(());
+    }
+
+    if file_type.is_dir() {
         if !name.is_empty() {
             zip.add_directory(format!("{name}/"), options)
                 .map_err(|err| format!("Failed to add folder to export archive: {err}"))?;
@@ -413,6 +438,19 @@ fn add_path_to_zip<W: Write + Seek>(
         return Ok(());
     }
 
+    if !file_type.is_file() {
+        return Ok(());
+    }
+
+    add_file_to_zip(zip, path, &name, options)
+}
+
+fn add_file_to_zip<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    path: &Path,
+    name: &str,
+    options: SimpleFileOptions,
+) -> Result<(), String> {
     zip.start_file(name, options)
         .map_err(|err| format!("Failed to add file to export archive: {err}"))?;
     let mut input = File::open(path).map_err(|err| format!("Failed to read file: {err}"))?;
@@ -537,11 +575,15 @@ fn copy_into_item_folder(source: &Path, item_dir: &Path) -> Result<PathBuf, Stri
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "imported-item".to_string());
     let destination = unique_path(&item_dir.join(name));
+    let metadata =
+        fs::metadata(source).map_err(|err| format!("Failed to read source metadata: {err}"))?;
 
-    if source.is_dir() {
+    if metadata.is_dir() {
         copy_dir(source, &destination)?;
+    } else if metadata.is_file() {
+        copy_file(source, &destination)?;
     } else {
-        fs::copy(source, &destination).map_err(|err| format!("Failed to copy file: {err}"))?;
+        return Err("Source type is not supported.".to_string());
     }
 
     Ok(destination)
@@ -553,14 +595,41 @@ fn copy_dir(source: &Path, destination: &Path) -> Result<(), String> {
     for entry in fs::read_dir(source).map_err(|err| format!("Failed to read folder: {err}"))? {
         let entry = entry.map_err(|err| format!("Failed to read folder entry: {err}"))?;
         let entry_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|err| format!("Failed to read folder entry type: {err}"))?;
+        let destination_path = unique_path(
+            &destination.join(sanitize_name(entry.file_name().to_string_lossy().as_ref())),
+        );
 
-        if entry_path.is_dir() {
+        if file_type.is_dir() {
             copy_dir(&entry_path, &destination_path)?;
-        } else {
-            fs::copy(&entry_path, &destination_path)
-                .map_err(|err| format!("Failed to copy file: {err}"))?;
+        } else if file_type.is_file() {
+            copy_file(&entry_path, &destination_path)?;
+        } else if file_type.is_symlink() {
+            copy_symlink_target(&entry_path, &destination_path)?;
         }
+    }
+
+    Ok(())
+}
+
+fn copy_file(source: &Path, destination: &Path) -> Result<(), String> {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("Failed to create folder: {err}"))?;
+    }
+
+    fs::copy(source, destination).map_err(|err| format!("Failed to copy file: {err}"))?;
+    Ok(())
+}
+
+fn copy_symlink_target(source: &Path, destination: &Path) -> Result<(), String> {
+    let Ok(metadata) = fs::metadata(source) else {
+        return Ok(());
+    };
+
+    if metadata.is_file() {
+        copy_file(source, destination)?;
     }
 
     Ok(())
@@ -648,6 +717,18 @@ fn is_windows_reserved_name(value: &str) -> bool {
             | "LPT8"
             | "LPT9"
     )
+}
+
+fn is_inside_directory(path: &Path, directory: &Path) -> bool {
+    let normalized_directory = directory
+        .canonicalize()
+        .unwrap_or_else(|_| directory.to_path_buf());
+    let normalized_parent = path
+        .parent()
+        .and_then(|parent| parent.canonicalize().ok())
+        .unwrap_or_else(|| path.parent().unwrap_or_else(|| Path::new("")).to_path_buf());
+
+    normalized_parent.starts_with(normalized_directory)
 }
 
 fn file_stem_or_name(path: &Path) -> String {
