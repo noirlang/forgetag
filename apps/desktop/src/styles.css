@@ -594,6 +594,42 @@ button {
   outline: none;
 }
 
+.drop-zone {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 82px;
+  padding: 14px;
+  border: 1px dashed #343434;
+  border-radius: 10px;
+  color: #a1a1aa;
+  background: #090909;
+}
+
+.drop-zone.dragging {
+  color: #ffffff;
+  border-color: #ffffff;
+  background: #151515;
+}
+
+.drop-zone span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.drop-zone strong {
+  color: #f4f4f5;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.drop-zone small {
+  color: #8f8f96;
+  font-size: 12px;
+}
+
 .import-empty {
   display: grid;
   min-height: 320px;
@@ -739,6 +775,52 @@ button {
   opacity: 0.65;
 }
 
+.settings-panel {
+  align-content: start;
+}
+
+.settings-stack {
+  display: grid;
+  gap: 12px;
+  max-width: 820px;
+}
+
+.settings-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #262626;
+  border-radius: 10px;
+  background: #101010;
+}
+
+.settings-card > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-card strong {
+  color: #f4f4f5;
+  font-size: 15px;
+  font-weight: 720;
+}
+
+.settings-card span {
+  color: #8f8f96;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .inspector {
   overflow: auto;
   padding: 16px;
@@ -852,5 +934,13 @@ button {
 
   .about-header {
     display: grid;
+  }
+
+  .settings-card {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-actions {
+    justify-content: flex-start;
   }
 }

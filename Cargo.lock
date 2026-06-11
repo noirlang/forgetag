@@ -981,6 +981,7 @@ checksum = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
+ "zlib-rs",
 ]
 
 [[package]]
@@ -1030,7 +1031,7 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "forgetag"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "forgetag-core",
  "forgetag-ipc",
@@ -1041,11 +1042,12 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tracing",
+ "zip",
 ]
 
 [[package]]
 name = "forgetag-ai"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1054,7 +1056,7 @@ dependencies = [
 
 [[package]]
 name = "forgetag-code"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "forgetag-core",
  "serde",
@@ -1062,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "forgetag-core"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "serde",
  "thiserror 1.0.69",
@@ -1071,7 +1073,7 @@ dependencies = [
 
 [[package]]
 name = "forgetag-db"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1083,7 +1085,7 @@ dependencies = [
 
 [[package]]
 name = "forgetag-indexer"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1095,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "forgetag-ipc"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "forgetag-core",
  "serde",
@@ -1104,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "forgetag-plugin"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1112,7 +1114,7 @@ dependencies = [
 
 [[package]]
 name = "forgetag-search"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "forgetag-core",
@@ -4164,6 +4166,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
+name = "typed-path"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5334,6 +5342,25 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "zip"
+version = "8.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap 2.14.0",
+ "memchr",
+ "typed-path",
+]
+
+[[package]]
+name = "zlib-rs"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3be3d40e40a133f9c916ee3f9f4fa2d9d63435b5fbe1bfc6d9dae0aa0ada1513"
 
 [[package]]
 name = "zmij"

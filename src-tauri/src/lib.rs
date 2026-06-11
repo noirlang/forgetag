@@ -1,11 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs,
+    fs::File,
+    io::{self, Seek, Write},
+    path::Component,
     path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::Manager;
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 const APP_ICON: &[u8] = include_bytes!("../icons/icon.png");
 
@@ -47,6 +52,13 @@ struct UpdateTarget {
     extension: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryTransferResponse {
+    path: String,
+    item_count: usize,
+}
+
 #[tauri::command]
 fn import_item(request: ImportRequest) -> Result<ImportResponse, String> {
     let source = PathBuf::from(&request.source);
@@ -80,9 +92,29 @@ fn import_item(request: ImportRequest) -> Result<ImportResponse, String> {
     let metadata_path = item_dir.join("metadata.json");
     let metadata = serde_json::to_vec_pretty(&response)
         .map_err(|err| format!("Failed to serialize metadata: {err}"))?;
-    fs::write(&metadata_path, metadata).map_err(|err| format!("Failed to write metadata: {err}"))?;
+    fs::write(&metadata_path, metadata)
+        .map_err(|err| format!("Failed to write metadata: {err}"))?;
 
     Ok(response)
+}
+
+#[tauri::command]
+fn classify_import_path(path: String) -> Result<String, String> {
+    let path = PathBuf::from(path);
+
+    if !path.exists() {
+        return Err("Dropped path does not exist.".to_string());
+    }
+
+    if path.is_dir() {
+        return Ok("folder".to_string());
+    }
+
+    if is_archive_path(&path) {
+        return Ok("archive".to_string());
+    }
+
+    Ok("file".to_string())
 }
 
 #[tauri::command]
@@ -107,6 +139,98 @@ fn list_items() -> Result<Vec<ImportResponse>, String> {
 
     items.sort_by(|left, right| right.id.cmp(&left.id));
     Ok(items)
+}
+
+#[tauri::command]
+fn export_library(destination: String) -> Result<LibraryTransferResponse, String> {
+    let destination = ensure_zip_extension(PathBuf::from(destination));
+    let library_root = library_root()?;
+    let file = File::create(&destination)
+        .map_err(|err| format!("Failed to create export archive: {err}"))?;
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let mut item_count = 0;
+
+    for entry in
+        fs::read_dir(&library_root).map_err(|err| format!("Failed to read library: {err}"))?
+    {
+        let entry = entry.map_err(|err| format!("Failed to read library entry: {err}"))?;
+        let path = entry.path();
+
+        if path.is_dir() && path.join("metadata.json").is_file() {
+            item_count += 1;
+        }
+
+        add_path_to_zip(&mut zip, &library_root, &path, options)?;
+    }
+
+    zip.finish()
+        .map_err(|err| format!("Failed to finish export archive: {err}"))?;
+
+    Ok(LibraryTransferResponse {
+        path: destination.to_string_lossy().to_string(),
+        item_count,
+    })
+}
+
+#[tauri::command]
+fn import_library_archive(source: String) -> Result<LibraryTransferResponse, String> {
+    let source = PathBuf::from(source);
+
+    if !source.is_file() {
+        return Err("Import archive not found.".to_string());
+    }
+
+    let library_root = library_root()?;
+    let file =
+        File::open(&source).map_err(|err| format!("Failed to open import archive: {err}"))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|err| format!("Failed to read import archive: {err}"))?;
+    let mut top_level_map: HashMap<String, PathBuf> = HashMap::new();
+
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|err| format!("Failed to read archive entry: {err}"))?;
+        let Some(enclosed_name) = entry.enclosed_name().map(PathBuf::from) else {
+            continue;
+        };
+
+        if enclosed_name.as_os_str().is_empty() {
+            continue;
+        }
+
+        let destination =
+            mapped_import_destination(&library_root, &mut top_level_map, &enclosed_name)?;
+
+        if entry.is_dir() {
+            fs::create_dir_all(&destination)
+                .map_err(|err| format!("Failed to create imported folder: {err}"))?;
+            continue;
+        }
+
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("Failed to create imported folder: {err}"))?;
+        }
+
+        let mut output = File::create(&destination)
+            .map_err(|err| format!("Failed to write imported file: {err}"))?;
+        io::copy(&mut entry, &mut output)
+            .map_err(|err| format!("Failed to copy imported file: {err}"))?;
+    }
+
+    let mut item_count = 0;
+    for item_dir in top_level_map.into_values() {
+        if repair_imported_metadata(&item_dir)? {
+            item_count += 1;
+        }
+    }
+
+    Ok(LibraryTransferResponse {
+        path: source.to_string_lossy().to_string(),
+        item_count,
+    })
 }
 
 #[tauri::command]
@@ -236,6 +360,142 @@ fn library_roots_for_read() -> Result<Vec<PathBuf>, String> {
     } else {
         Ok(vec![primary])
     }
+}
+
+fn add_path_to_zip<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    root: &Path,
+    path: &Path,
+    options: SimpleFileOptions,
+) -> Result<(), String> {
+    let name = zip_entry_name(root, path)?;
+
+    if path.is_dir() {
+        if !name.is_empty() {
+            zip.add_directory(format!("{name}/"), options)
+                .map_err(|err| format!("Failed to add folder to export archive: {err}"))?;
+        }
+
+        for entry in fs::read_dir(path).map_err(|err| format!("Failed to read folder: {err}"))? {
+            let entry = entry.map_err(|err| format!("Failed to read folder entry: {err}"))?;
+            add_path_to_zip(zip, root, &entry.path(), options)?;
+        }
+
+        return Ok(());
+    }
+
+    zip.start_file(name, options)
+        .map_err(|err| format!("Failed to add file to export archive: {err}"))?;
+    let mut input = File::open(path).map_err(|err| format!("Failed to read file: {err}"))?;
+    io::copy(&mut input, zip).map_err(|err| format!("Failed to write export archive: {err}"))?;
+    Ok(())
+}
+
+fn zip_entry_name(root: &Path, path: &Path) -> Result<String, String> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|err| format!("Failed to resolve export path: {err}"))?;
+    let mut parts = Vec::new();
+
+    for component in relative.components() {
+        match component {
+            Component::Normal(part) => parts.push(part.to_string_lossy().to_string()),
+            _ => return Err("Export path contains an unsupported component.".to_string()),
+        }
+    }
+
+    Ok(parts.join("/"))
+}
+
+fn mapped_import_destination(
+    library_root: &Path,
+    top_level_map: &mut HashMap<String, PathBuf>,
+    relative: &Path,
+) -> Result<PathBuf, String> {
+    let mut components = relative.components();
+    let Some(first) = components.next() else {
+        return Err("Archive entry is empty.".to_string());
+    };
+
+    let Component::Normal(first_name) = first else {
+        return Err("Archive entry contains an unsupported path.".to_string());
+    };
+
+    let first_key = first_name.to_string_lossy().to_string();
+    let top_dir = top_level_map
+        .entry(first_key.clone())
+        .or_insert_with(|| unique_path(&library_root.join(sanitize_name(&first_key))));
+    let mut destination = top_dir.clone();
+
+    for component in components {
+        match component {
+            Component::Normal(part) => destination.push(part),
+            _ => return Err("Archive entry contains an unsupported path.".to_string()),
+        }
+    }
+
+    Ok(destination)
+}
+
+fn repair_imported_metadata(item_dir: &Path) -> Result<bool, String> {
+    let metadata_path = item_dir.join("metadata.json");
+    if !metadata_path.is_file() {
+        return Ok(false);
+    }
+
+    let metadata = fs::read(&metadata_path)
+        .map_err(|err| format!("Failed to read imported metadata: {err}"))?;
+    let mut item = serde_json::from_slice::<ImportResponse>(&metadata)
+        .map_err(|err| format!("Failed to parse imported metadata: {err}"))?;
+
+    item.id = make_id();
+    item.managed_path = first_managed_child(item_dir)?.to_string_lossy().to_string();
+
+    let metadata = serde_json::to_vec_pretty(&item)
+        .map_err(|err| format!("Failed to serialize imported metadata: {err}"))?;
+    fs::write(&metadata_path, metadata)
+        .map_err(|err| format!("Failed to write imported metadata: {err}"))?;
+    Ok(true)
+}
+
+fn first_managed_child(item_dir: &Path) -> Result<PathBuf, String> {
+    for entry in
+        fs::read_dir(item_dir).map_err(|err| format!("Failed to read imported item: {err}"))?
+    {
+        let entry = entry.map_err(|err| format!("Failed to read imported item entry: {err}"))?;
+        if entry.file_name() == "metadata.json" {
+            continue;
+        }
+        return Ok(entry.path());
+    }
+
+    Ok(item_dir.to_path_buf())
+}
+
+fn ensure_zip_extension(path: PathBuf) -> PathBuf {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+    {
+        return path;
+    }
+
+    let mut path = path;
+    path.set_extension("zip");
+    path
+}
+
+fn is_archive_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "tgz"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn copy_into_item_folder(source: &Path, item_dir: &Path) -> Result<PathBuf, String> {
@@ -393,7 +653,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_name,
+            classify_import_path,
+            export_library,
             import_item,
+            import_library_archive,
             list_items,
             reveal_item,
             open_external_url,

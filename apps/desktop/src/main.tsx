@@ -6,6 +6,7 @@ import {
   Archive,
   CalendarDays,
   Check,
+  Download,
   ExternalLink,
   FilePlus2,
   Folder,
@@ -15,20 +16,22 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Settings,
   Tags,
+  Upload,
   X,
 } from "lucide-react";
 import logoUrl from "./assets/logo.png";
 import "./styles.css";
 
 const queryClient = new QueryClient();
-const CURRENT_VERSION = "0.1.0";
+const CURRENT_VERSION = "0.0.2";
 const CREATOR_URL = "https://github.com/noirlang";
 const UPDATE_REPO = "noirlang/forgetag";
 const UPDATE_REPO_URL = `https://github.com/${UPDATE_REPO}`;
 
 type ImportKind = "file" | "folder" | "archive";
-type ActivePanel = "library" | "search" | "add" | "tags" | "info";
+type ActivePanel = "library" | "search" | "add" | "tags" | "settings" | "info";
 
 type ImportDraft = {
   kind: ImportKind;
@@ -70,11 +73,18 @@ type GitHubRelease = {
   assets?: GitHubReleaseAsset[];
 };
 
+type LibraryTransferResult = {
+  path: string;
+  itemCount: number;
+};
+
 const importLabels: Record<ImportKind, string> = {
   file: "File",
   folder: "Folder",
   archive: "Archive",
 };
+
+const archiveExtensions = new Set(["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "tgz"]);
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -96,6 +106,11 @@ function createDraft(kind: ImportKind, source: string): ImportDraft {
     tags: "",
     description: "",
   };
+}
+
+function inferImportKindFromPath(path: string): ImportKind {
+  const extension = fileNameFromPath(path).split(".").pop()?.toLowerCase() ?? "";
+  return archiveExtensions.has(extension) ? "archive" : "file";
 }
 
 function parseTags(value: string) {
@@ -198,6 +213,8 @@ function App() {
   const [importedItems, setImportedItems] = React.useState<ImportedItem[]>([]);
   const [status, setStatus] = React.useState("Ready.");
   const [isAdding, setIsAdding] = React.useState(false);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [isTransferring, setIsTransferring] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedTags, setSelectedTags] = React.useState<string[]>([]);
   const [selectedItemId, setSelectedItemId] = React.useState<string | null>(null);
@@ -242,15 +259,58 @@ function App() {
   const selectedItem =
     importedItems.find((item) => item.id === selectedItemId) ?? visibleItems[0] ?? null;
 
+  async function refreshItems() {
+    try {
+      const items = await invoke<ImportedItem[]>("list_items");
+      setImportedItems(items);
+      setSelectedItemId((current) =>
+        current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null,
+      );
+    } catch {
+      // Browser preview cannot call Tauri commands.
+    }
+  }
+
   React.useEffect(() => {
-    invoke<ImportedItem[]>("list_items")
-      .then((items) => {
-        setImportedItems(items);
-        setSelectedItemId((current) => current ?? items[0]?.id ?? null);
+    void refreshItems();
+  }, []);
+
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    void import("@tauri-apps/api/webview")
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((event) => {
+          if (event.payload.type === "enter" || event.payload.type === "over") {
+            setIsDragging(true);
+            setActivePanel("add");
+            return;
+          }
+
+          if (event.payload.type === "leave") {
+            setIsDragging(false);
+            return;
+          }
+
+          if (event.payload.type === "drop") {
+            setIsDragging(false);
+            const [path] = event.payload.paths;
+            if (path) {
+              void useDroppedPath(path);
+            }
+          }
+        }),
+      )
+      .then((cleanup) => {
+        unlisten = cleanup;
       })
       .catch(() => {
-        // Browser preview cannot call Tauri commands.
+        // Browser preview cannot access Tauri drag/drop events.
       });
+
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   function openPanel(panel: ActivePanel) {
@@ -313,6 +373,16 @@ function App() {
     setActivePanel("add");
     setDraft(createDraft(kind, source));
     setStatus(`${importLabels[kind]} selected.`);
+  }
+
+  async function useDroppedPath(path: string) {
+    const kind = await invoke<ImportKind>("classify_import_path", { path }).catch(() =>
+      inferImportKindFromPath(path),
+    );
+
+    setActivePanel("add");
+    setDraft(createDraft(kind, path));
+    setStatus(`${importLabels[kind]} dropped.`);
   }
 
   function updateDraft(field: keyof ImportDraft, value: string) {
@@ -378,6 +448,59 @@ function App() {
       await invoke("open_external_url", { url });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function exportLibraryArchive() {
+    setIsTransferring(true);
+    setStatus("Exporting...");
+
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const destination = await save({
+        defaultPath: `forgetag-library-${todayIso()}.zip`,
+        filters: [{ name: "ZIP archive", extensions: ["zip"] }],
+      });
+
+      if (!destination) {
+        setStatus("Export cancelled.");
+        return;
+      }
+
+      const result = await invoke<LibraryTransferResult>("export_library", { destination });
+      setStatus(`Exported ${result.itemCount} items.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsTransferring(false);
+    }
+  }
+
+  async function importLibraryArchive() {
+    setIsTransferring(true);
+    setStatus("Importing...");
+
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selection = await open({
+        multiple: false,
+        filters: [{ name: "ZIP archive", extensions: ["zip"] }],
+      });
+
+      if (!selection) {
+        setStatus("Import cancelled.");
+        return;
+      }
+
+      const source = Array.isArray(selection) ? selection[0] : selection;
+      const result = await invoke<LibraryTransferResult>("import_library_archive", { source });
+      await refreshItems();
+      setActivePanel("library");
+      setStatus(`Imported ${result.itemCount} items.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsTransferring(false);
     }
   }
 
@@ -539,6 +662,14 @@ function App() {
             </div>
           </div>
 
+          <section className={`drop-zone ${isDragging ? "dragging" : ""}`} aria-label="Drop import target">
+            <Upload size={22} aria-hidden="true" />
+            <span>
+              <strong>{isDragging ? "Drop to add" : "Drop file, folder, or archive"}</strong>
+              <small>Metadata opens after selection.</small>
+            </span>
+          </section>
+
           {draft ? (
             <section className="metadata-panel" aria-label="Import metadata">
               <div className="selected-source">
@@ -595,6 +726,35 @@ function App() {
               <h3>Choose something to add</h3>
             </section>
           )}
+        </section>
+      );
+    }
+
+    if (activePanel === "settings") {
+      return (
+        <section className="detail-card settings-panel" aria-label="Settings">
+          <div className="detail-header">
+            <BrandTitle title="Settings" />
+          </div>
+
+          <section className="settings-stack">
+            <article className="settings-card">
+              <div>
+                <strong>Library backup</strong>
+                <span>Export or restore the managed library as a ZIP archive.</span>
+              </div>
+              <div className="settings-actions">
+                <button className="secondary-action" disabled={isTransferring} onClick={exportLibraryArchive}>
+                  <Download size={16} aria-hidden="true" />
+                  Export ZIP
+                </button>
+                <button className="primary-action" disabled={isTransferring} onClick={importLibraryArchive}>
+                  <Upload size={16} aria-hidden="true" />
+                  Import ZIP
+                </button>
+              </div>
+            </article>
+          </section>
         </section>
       );
     }
@@ -747,6 +907,14 @@ function App() {
             onClick={() => openPanel("tags")}
           >
             <Tags size={18} aria-hidden="true" />
+          </button>
+          <button
+            aria-label="Settings"
+            aria-pressed={activePanel === "settings"}
+            className={activePanel === "settings" ? "active" : undefined}
+            onClick={() => openPanel("settings")}
+          >
+            <Settings size={18} aria-hidden="true" />
           </button>
           <span className="activity-spacer" aria-hidden="true" />
           <button
