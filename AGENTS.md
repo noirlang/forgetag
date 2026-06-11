@@ -14,7 +14,7 @@ boundaries. Keep new behavior close to the crate or app layer that owns it.
 
 - `npm install`: install workspace dependencies.
 - `npm run dev`: run the Vite frontend only.
-- `npm run desktop`: run the Tauri desktop app with Linux WebKit runtime flags.
+- `npm run desktop`: run the Tauri desktop app.
 - `npm run build`: type-check and build the frontend.
 - `cargo check --workspace`: check all Rust crates without producing packages.
 - `npx tauri build --config src-tauri/tauri.conf.json`: create release bundles

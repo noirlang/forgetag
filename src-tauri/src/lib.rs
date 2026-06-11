@@ -260,7 +260,7 @@ fn reveal_item(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     let mut command = {
-        let mut command = Command::new("explorer");
+        let mut command = Command::new("explorer.exe");
         command.arg(&target);
         command
     };
@@ -299,8 +299,8 @@ fn open_external_url(url: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     let mut command = {
-        let mut command = Command::new("explorer");
-        command.arg(&url);
+        let mut command = Command::new("rundll32.exe");
+        command.arg("url.dll,FileProtocolHandler").arg(&url);
         command
     };
 
@@ -339,19 +339,13 @@ fn update_target() -> UpdateTarget {
 }
 
 fn library_root() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .ok_or_else(|| "Home directory not found".to_string())?;
-    let root = PathBuf::from(home).join("forgetag-library");
+    let root = home_dir()?.join("forgetag-library");
     fs::create_dir_all(&root).map_err(|err| format!("Failed to create library folder: {err}"))?;
     Ok(root)
 }
 
 fn library_roots_for_read() -> Result<Vec<PathBuf>, String> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .ok_or_else(|| "Home directory not found".to_string())?;
-    let home = PathBuf::from(home);
+    let home = home_dir()?;
     let primary = library_root()?;
     let legacy = home.join(["Forge", "Tag Library"].concat());
 
@@ -360,6 +354,41 @@ fn library_roots_for_read() -> Result<Vec<PathBuf>, String> {
     } else {
         Ok(vec![primary])
     }
+}
+
+fn home_dir() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(profile) = env_path("USERPROFILE") {
+            return Ok(profile);
+        }
+
+        if let (Some(mut drive), Some(path)) =
+            (std::env::var_os("HOMEDRIVE"), std::env::var_os("HOMEPATH"))
+        {
+            drive.push(path);
+            return Ok(PathBuf::from(drive));
+        }
+
+        if let Some(home) = env_path("HOME") {
+            return Ok(home);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(home) = env_path("HOME").or_else(|| env_path("USERPROFILE")) {
+            return Ok(home);
+        }
+    }
+
+    Err("Home directory not found".to_string())
+}
+
+fn env_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name)
+        .filter(|value| !value.to_string_lossy().trim().is_empty())
+        .map(PathBuf::from)
 }
 
 fn add_path_to_zip<W: Write + Seek>(
@@ -429,7 +458,9 @@ fn mapped_import_destination(
 
     for component in components {
         match component {
-            Component::Normal(part) => destination.push(part),
+            Component::Normal(part) => {
+                destination.push(sanitize_name(part.to_string_lossy().as_ref()));
+            }
             _ => return Err("Archive entry contains an unsupported path.".to_string()),
         }
     }
@@ -578,7 +609,45 @@ fn sanitize_name(value: &str) -> String {
         name = "item".to_string();
     }
 
+    if is_windows_reserved_name(&name) {
+        name = format!("_{name}");
+    }
+
     name
+}
+
+fn is_windows_reserved_name(value: &str) -> bool {
+    let stem = value
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 fn file_stem_or_name(path: &Path) -> String {

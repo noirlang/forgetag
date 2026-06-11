@@ -151,27 +151,52 @@ function rpmArch(arch: string) {
   return arch;
 }
 
+function windowsArch(arch: string) {
+  if (arch === "x86_64") return "x64";
+  if (arch === "aarch64") return "arm64";
+  return arch;
+}
+
 function linuxAssetNames(version: string, target: UpdateTarget) {
   const cleanVersion = normalizeVersion(version);
+  const compactName = "forgetag.appimage";
   const appImageName = `forgetag_${cleanVersion}_${debArch(target.arch)}.AppImage`;
   const debName = `forgetag_${cleanVersion}_${debArch(target.arch)}.deb`;
   const rpmName = `forgetag-${cleanVersion}-1.${rpmArch(target.arch)}.rpm`;
   const preferred = {
-    appimage: [appImageName, debName, rpmName],
-    deb: [debName, appImageName, rpmName],
-    rpm: [rpmName, appImageName, debName],
-    dmg: [appImageName, debName, rpmName],
-    msi: [appImageName, debName, rpmName],
-    unknown: [appImageName, debName, rpmName],
+    appimage: [compactName, appImageName, debName, rpmName],
+    deb: [debName, compactName, appImageName, rpmName],
+    rpm: [rpmName, compactName, appImageName, debName],
+    dmg: [compactName, appImageName, debName, rpmName],
+    msi: [compactName, appImageName, debName, rpmName],
+    unknown: [compactName, appImageName, debName, rpmName],
   };
 
   return preferred[target.packageKind] ?? preferred.unknown;
 }
 
-function pickReleaseAsset(assets: GitHubReleaseAsset[], version: string, target: UpdateTarget) {
-  if (target.os !== "linux") return null;
+function windowsAssetNames(version: string, target: UpdateTarget) {
+  const cleanVersion = normalizeVersion(version);
+  const arch = windowsArch(target.arch);
 
-  const names = linuxAssetNames(version, target).map((name) => name.toLowerCase());
+  return [
+    "forgetag.msi",
+    `forgetag_${cleanVersion}_${arch}_en-US.msi`,
+    `forgetag_${cleanVersion}_${arch}.msi`,
+    `forgetag-${cleanVersion}-${arch}.msi`,
+    `forgetag-${cleanVersion}.msi`,
+  ];
+}
+
+function releaseAssetNames(version: string, target: UpdateTarget) {
+  if (target.os === "windows") return windowsAssetNames(version, target);
+  if (target.os === "linux") return linuxAssetNames(version, target);
+  if (target.os === "macos") return ["forgetag.dmg", `forgetag_${normalizeVersion(version)}.dmg`];
+  return [];
+}
+
+function pickReleaseAsset(assets: GitHubReleaseAsset[], version: string, target: UpdateTarget) {
+  const names = releaseAssetNames(version, target).map((name) => name.toLowerCase());
   const exact = assets.find((asset) => asset.name && names.includes(asset.name.toLowerCase()));
   if (exact) return exact;
 
