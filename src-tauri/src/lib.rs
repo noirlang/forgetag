@@ -13,6 +13,7 @@ use tauri::Manager;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 const APP_ICON: &[u8] = include_bytes!("../icons/icon.png");
+const MAX_SAFE_NAME_CHARS: usize = 180;
 
 #[tauri::command]
 fn app_name() -> &'static str {
@@ -678,11 +679,35 @@ fn sanitize_name(value: &str) -> String {
         name = "item".to_string();
     }
 
+    name = limit_name_length(&name);
+
     if is_windows_reserved_name(&name) {
         name = format!("_{name}");
     }
 
     name
+}
+
+fn limit_name_length(value: &str) -> String {
+    if value.chars().count() <= MAX_SAFE_NAME_CHARS {
+        return value.to_string();
+    }
+
+    let path = Path::new(value);
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| format!(".{extension}"))
+        .unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(value);
+    let suffix_len = extension.chars().count();
+    let stem_limit = MAX_SAFE_NAME_CHARS.saturating_sub(suffix_len).max(1);
+    let trimmed_stem = stem.chars().take(stem_limit).collect::<String>();
+
+    format!("{trimmed_stem}{extension}")
 }
 
 fn is_windows_reserved_name(value: &str) -> bool {
