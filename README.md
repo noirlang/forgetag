@@ -72,20 +72,6 @@ Check Rust:
 cargo check --workspace
 ```
 
-## Linux Packages
-
-Tauri builds Linux packages under `target/release/bundle/`.
-
-Expected release asset names:
-
-```text
-forgetag_0.0.2_amd64.AppImage
-forgetag_0.0.2_amd64.deb
-forgetag-0.0.2-1.x86_64.rpm
-```
-
-The AppImage may need to be built from the generated AppDir on some rolling
-Linux systems when `linuxdeploy` fails on newer system libraries.
 
 ## License
 
