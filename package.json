@@ -10,7 +10,7 @@
     "dev": "npm --workspace @forgetag/desktop run dev",
     "build": "npm --workspace @forgetag/desktop run build",
     "desktop": "tauri dev --config src-tauri/tauri.conf.json",
-    "build:linux:appimage": "tauri build --config src-tauri/tauri.conf.json --bundles appimage",
+    "build:linux:appimage": "scripts/build-appimage-ubuntu.sh",
     "build:windows:msi": "tauri build --config src-tauri/tauri.conf.json --bundles msi"
   }
 }
