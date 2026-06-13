@@ -6,6 +6,10 @@
 
 Created by **noirLang**.
 
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/414b277b-60a9-47c8-b173-531b11bb3147" width="100%" controls autoplay loop muted></video>
+</p>
+
 `forgetag` is a local-first desktop library for collecting files, folders,
 archives, tags, dates, and short notes without moving or deleting the original
 source files. Added items are copied into a managed local library and stored
