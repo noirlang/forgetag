@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ARCH_OUT_DIR="${ARCH_OUT_DIR:-$ROOT_DIR/src-tauri/target/release/bundle/arch}"
+ARCH_OUT_DIR="${ARCH_OUT_DIR:-$ROOT_DIR/target/release/bundle/arch}"
 STAGE_DIR="$ARCH_OUT_DIR/pkg-root"
 PACKAGE_NAME="forgetag"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT_DIR/src-tauri/Cargo.toml" | head -n1)"
@@ -22,7 +22,7 @@ require_tool() {
 require_tool bsdtar
 require_tool zstd
 
-BINARY="$ROOT_DIR/src-tauri/target/release/forgetag"
+BINARY="$ROOT_DIR/target/release/forgetag"
 if [[ ! -x "$BINARY" ]]; then
   echo "Release binary not found at $BINARY. Run 'cargo build --release' first." >&2
   exit 1
@@ -44,7 +44,7 @@ for size in 16x16 32x32 64x64 128x128 256x256 512x512; do
   fi
 done
 
-DESKTOP_SRC="$ROOT_DIR/src-tauri/target/release/bundle/deb/forgetag/usr/share/applications/forgetag.desktop"
+DESKTOP_SRC="$ROOT_DIR/target/release/bundle/deb/forgetag/usr/share/applications/forgetag.desktop"
 if [[ -f "$DESKTOP_SRC" ]]; then
   install -m 644 "$DESKTOP_SRC" "$STAGE_DIR/usr/share/applications/forgetag.desktop"
 else

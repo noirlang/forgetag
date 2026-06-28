@@ -23,7 +23,7 @@ finally {
 }
 
 # Find the built MSI
-$tauriMsi = Get-ChildItem (Join-Path $RootDir "src-tauri/target/release/bundle/msi/*.msi") -ErrorAction SilentlyContinue | Select-Object -First 1
+$tauriMsi = Get-ChildItem (Join-Path $RootDir "target/release/bundle/msi/*.msi") -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $tauriMsi) {
     throw "Tauri MSI build did not produce an MSI file"
 }

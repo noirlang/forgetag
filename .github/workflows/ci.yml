@@ -99,22 +99,22 @@ jobs:
           set -euo pipefail
           mkdir -p release-assets
           # AppImage
-          appimage=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name "*.AppImage" ! -name "*.tauri" | head -n 1)
+          appimage=$(find target/release/bundle/appimage -maxdepth 1 -name "*.AppImage" ! -name "*.tauri" | head -n 1)
           if [[ -n "$appimage" ]]; then
             cp "$appimage" "release-assets/forgetag-${ASSET_SUFFIX}-linux-x64.AppImage"
           fi
           # DEB
-          deb=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name "*.deb" | head -n 1)
+          deb=$(find target/release/bundle/deb -maxdepth 1 -name "*.deb" | head -n 1)
           if [[ -n "$deb" ]]; then
             cp "$deb" "release-assets/forgetag-${ASSET_SUFFIX}-linux-x64.deb"
           fi
           # RPM
-          rpm=$(find src-tauri/target/release/bundle/rpm -maxdepth 1 -name "*.rpm" | head -n 1)
+          rpm=$(find target/release/bundle/rpm -maxdepth 1 -name "*.rpm" | head -n 1)
           if [[ -n "$rpm" ]]; then
             cp "$rpm" "release-assets/forgetag-${ASSET_SUFFIX}-linux-x64.rpm"
           fi
           # Arch Linux
-          arch=$(find src-tauri/target/release/bundle/arch -maxdepth 1 -name "*.pkg.tar.zst" | head -n 1)
+          arch=$(find target/release/bundle/arch -maxdepth 1 -name "*.pkg.tar.zst" | head -n 1)
           if [[ -n "$arch" ]]; then
             cp "$arch" "release-assets/forgetag-${ASSET_SUFFIX}-linux-x64.pkg.tar.zst"
           fi
@@ -158,15 +158,14 @@ jobs:
           Expand-Archive $Archive -DestinationPath $WixDir -Force
           $WixDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Build MSI
-        shell: pwsh
-        run: scripts/build-windows-msi.ps1
+        run: npx tauri build --config src-tauri/tauri.conf.json --bundles msi
       - name: Name Windows asset from commit
         env:
           ASSET_SUFFIX: ${{ needs.metadata.outputs.asset_suffix }}
         shell: pwsh
         run: |
           New-Item release-assets -ItemType Directory -Force | Out-Null
-          $msi = Get-ChildItem dist/*.msi | Select-Object -First 1
+          $msi = Get-ChildItem target/release/bundle/msi/*.msi | Select-Object -First 1
           if ($msi) {
             Copy-Item $msi.FullName "release-assets\forgetag-$env:ASSET_SUFFIX-windows-x64.msi"
           }

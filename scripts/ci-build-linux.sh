@@ -9,7 +9,7 @@ GLIBC_CEILING="2.35"
 restore_output_owner() {
   if [[ -n "${HOST_UID:-}" && -n "${HOST_GID:-}" ]]; then
     chown -R "$HOST_UID:$HOST_GID" \
-      "$ROOT_DIR/src-tauri/target" \
+      "$ROOT_DIR/target" \
       "$ROOT_DIR/apps/desktop/dist" \
       "$ROOT_DIR/node_modules" \
       "$ROOT_DIR/apps/desktop/node_modules" \
@@ -41,7 +41,8 @@ apt-get install -y --no-install-recommends \
   zstd \
   desktop-file-utils \
   appstream \
-  libfuse2
+  libfuse2 \
+  xdg-utils
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
   | sh -s -- -y --profile minimal --default-toolchain stable
@@ -73,8 +74,8 @@ npm ci
 npx tauri build --config src-tauri/tauri.conf.json --bundles appimage,deb,rpm
 
 # ---- Post-process AppImage ----
-APPDIR="src-tauri/target/release/bundle/appimage/forgetag.AppDir"
-APPIMAGE=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name "*.AppImage" ! -name "*.tauri" | head -n 1)
+APPDIR="target/release/bundle/appimage/forgetag.AppDir"
+APPIMAGE=$(find target/release/bundle/appimage -maxdepth 1 -name "*.AppImage" ! -name "*.tauri" | head -n 1)
 
 if [[ -n "$APPIMAGE" && -d "$APPDIR" ]]; then
   for size in 16x16 32x32 64x64 128x128 256x256 512x512; do
