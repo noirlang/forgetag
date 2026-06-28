@@ -19,6 +19,25 @@ boundaries. Keep new behavior close to the crate or app layer that owns it.
 - `cargo check --workspace`: check all Rust crates without producing packages.
 - `npx tauri build --config src-tauri/tauri.conf.json`: create release bundles
   only when packaging is explicitly needed.
+- `npm run build:arch`: build Arch Linux package from existing release binary.
+- `npm run ci:linux`: full Linux CI build (AppImage, DEB, RPM, Arch) inside
+  Debian 12 Docker container.
+- `npm run build:windows:msi`: build Windows MSI via Tauri + WiX.
+
+## CI/CD Pipeline
+
+The `.github/workflows/ci.yml` GitHub Actions workflow:
+- **metadata**: generates asset naming from commit message.
+- **quality**: runs `cargo fmt --check`, `cargo test --locked`, `npm run build`.
+- **linux-packages**: builds AppImage, DEB, RPM, and Arch `.pkg.tar.zst` inside
+  Debian 12 Docker for glibc compatibility.
+- **windows-msi**: builds MSI on `windows-2022` with WiX Toolset.
+- **release**: publishes a prerelease on every push to `main` with all assets
+  and SHA256 checksums.
+
+Website (`website/`) is a Nuxt 3 static site deployed separately and not tracked
+in the root repository (`.gitignore` excludes it). The live site is at
+`forgetag.noirlang.tr`.
 
 ## Coding Style & Naming Conventions
 
